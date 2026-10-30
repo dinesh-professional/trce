@@ -1,0 +1,48 @@
+import { Facility } from '../types';
+
+export const facilitiesData: Facility[] = [
+  {
+    id: 'FAC-NA-01',
+    name: 'Detroit Heavy Stamping & Assembly Plant',
+    code: 'DET-01',
+    location: 'Detroit, Michigan, USA',
+    type: 'manufacturing',
+    status: 'operational',
+    activeLines: 8,
+    totalLines: 8,
+    supervisor: 'Marcus Vance',
+  },
+  {
+    id: 'FAC-EU-02',
+    name: 'Stuttgart Precision Powertrain Facility',
+    code: 'STG-02',
+    location: 'Stuttgart, Germany',
+    type: 'manufacturing',
+    status: 'degraded',
+    activeLines: 5,
+    totalLines: 6,
+    supervisor: 'Greta Lindner',
+  },
+  {
+    id: 'FAC-AP-03',
+    name: 'Yokohama Robotics & Actuators Works',
+    code: 'YOK-03',
+    location: 'Yokohama, Japan',
+    type: 'assembly',
+    status: 'operational',
+    activeLines: 12,
+    totalLines: 12,
+    supervisor: 'Kenji Sato',
+  },
+  {
+    id: 'FAC-NA-04',
+    name: 'Monterrey Logistics & Spare Parts Hub',
+    code: 'MTY-04',
+    location: 'Monterrey, Mexico',
+    type: 'warehouse',
+    status: 'operational',
+    activeLines: 4,
+    totalLines: 4,
+    supervisor: 'Elena Ruiz',
+  },
+];

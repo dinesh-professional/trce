@@ -1,0 +1,16 @@
+<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="trce-icon-grad" x1="20" y1="20" x2="105" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#10B981" />
+      <stop offset="100%" stopColor="#06B6D4" />
+    </linearGradient>
+  </defs>
+  <path d="M27 40H51L65 26H93" stroke="url(#trce-icon-grad)" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+  <path d="M27 62H77L93 78" stroke="url(#trce-icon-grad)" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+  <path d="M51 40V80L65 94H93" stroke="url(#trce-icon-grad)" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+  <circle cx="27" cy="40" r="5.5" fill="#0B0D13" stroke="#10B981" strokeWidth="3.5" />
+  <circle cx="93" cy="26" r="5.5" fill="#06B6D4" />
+  <circle cx="27" cy="62" r="5.5" fill="#10B981" />
+  <circle cx="93" cy="78" r="5.5" fill="#0B0D13" stroke="#06B6D4" strokeWidth="3.5" />
+  <circle cx="93" cy="94" r="5.5" fill="#06B6D4" />
+</svg>
