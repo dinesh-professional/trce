@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { sendSmtpEmail, createOtpChallenge } from '@/lib/auth/smtp-mailer';
 import { createClient } from '@/lib/supabase/server';
 
 export async function POST(request: Request) {
@@ -8,47 +9,58 @@ export async function POST(request: Request) {
 
     if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       return NextResponse.json(
-        { error: 'A valid corporate or personal email address is required.' },
+        { error: 'A valid email address is required.' },
         { status: 400 }
       );
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const supabase = await createClient();
 
-    // Trigger Supabase OTP send over configured SMTP provider
-    const { error } = await supabase.auth.signInWithOtp({
-      email: cleanEmail,
-      options: {
-        shouldCreateUser: true,
-      },
-    });
+    // 1. Generate 6-digit cryptographically secure OTP code
+    const crypto = await import('crypto');
+    const otpCode = crypto.randomInt(100000, 999999).toString();
 
-    if (error) {
-      console.error('Supabase signInWithOtp SMTP error:', error);
-      
-      let userFriendlyMessage = error.message;
-      if (error.message.includes('Error sending magic link email')) {
-        userFriendlyMessage =
-          'SMTP dispatch rejected by mail server. Please verify in Supabase SMTP Settings that Port is 587 and Sender is onboarding@resend.dev.';
-      } else if (error.message.includes('rate limit')) {
-        userFriendlyMessage = 'SMTP rate limit reached. Please wait 60 seconds before requesting a new code.';
-      }
-
+    // 2. Dispatch real email via Gmail SMTP Protocol
+    console.log(`[SMTP] Dispatching security passcode to: ${cleanEmail}`);
+    try {
+      await sendSmtpEmail(cleanEmail, otpCode);
+      console.log(`[SMTP] Successfully delivered to ${cleanEmail}`);
+    } catch (smtpErr: any) {
+      console.error('[SMTP Delivery Error]:', smtpErr?.message);
       return NextResponse.json(
-        { error: userFriendlyMessage, raw: error.message },
-        { status: 400 }
+        { error: `SMTP Dispatch Error: ${smtpErr?.message || 'Could not reach mail server.'}` },
+        { status: 500 }
       );
     }
 
-    return NextResponse.json({
+    // 3. Create signed HMAC challenge token
+    const challengeToken = createOtpChallenge(cleanEmail, otpCode);
+
+    // 4. Also register user in Supabase in background (best-effort)
+    try {
+      const supabase = await createClient();
+      supabase.auth.signInWithOtp({ email: cleanEmail, options: { shouldCreateUser: true } }).catch(() => {});
+    } catch {}
+
+    const response = NextResponse.json({
       success: true,
-      message: `Verification code successfully dispatched to ${cleanEmail} via SMTP.`,
+      message: `Security passcode dispatched to ${cleanEmail} via Gmail SMTP.`,
     });
+
+    // Store signed challenge in HTTP-only cookie (10 minute expiry)
+    response.cookies.set('trce_otp_challenge', challengeToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 600, // 10 minutes
+    });
+
+    return response;
   } catch (error: any) {
-    console.error('Unexpected error in /api/auth/send-otp:', error);
+    console.error('Fatal send-otp error:', error);
     return NextResponse.json(
-      { error: error?.message || 'Unexpected server error during OTP dispatch.' },
+      { error: error?.message || 'Unexpected server error dispatching OTP.' },
       { status: 500 }
     );
   }

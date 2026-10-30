@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import { verifyOtpChallenge } from '@/lib/auth/smtp-mailer';
 import { createClient } from '@/lib/supabase/server';
 import { matchOrProvisionTenant } from '@/lib/supabase/tenant-provisioner';
 
@@ -24,26 +26,46 @@ export async function POST(request: Request) {
       );
     }
 
-    const supabase = await createClient();
+    // 1. Verify against cryptographic signed HMAC challenge
+    const cookieStore = await cookies();
+    const challengeCookie = cookieStore.get('trce_otp_challenge')?.value;
 
-    // 1. Verify token with Supabase Auth GoTrue engine
-    const { data, error } = await supabase.auth.verifyOtp({
-      email: cleanEmail,
-      token: cleanToken,
-      type: 'email',
-    });
+    let isVerified = false;
+    let verificationError = '';
 
-    if (error || !data.user) {
-      console.warn('Supabase verifyOtp failed:', error?.message);
+    if (challengeCookie) {
+      const result = verifyOtpChallenge(cleanEmail, cleanToken, challengeCookie);
+      if (result.valid) {
+        isVerified = true;
+      } else {
+        verificationError = result.reason || 'Invalid verification code.';
+      }
+    }
+
+    // 2. If not verified via challenge cookie, try Supabase GoTrue OTP as fallback
+    if (!isVerified) {
+      try {
+        const supabase = await createClient();
+        const { data, error } = await supabase.auth.verifyOtp({
+          email: cleanEmail,
+          token: cleanToken,
+          type: 'email',
+        });
+        if (!error && data?.user) {
+          isVerified = true;
+        }
+      } catch {}
+    }
+
+    if (!isVerified) {
       return NextResponse.json(
-        { error: error?.message || 'Invalid or expired 6-digit OTP code.' },
+        { error: verificationError || 'Invalid or expired 6-digit security code.' },
         { status: 401 }
       );
     }
 
-    const verifiedUserId = data.user.id;
-
-    // 2. Provision or match corporate tenant
+    // 3. Provision or match corporate tenant
+    const verifiedUserId = `usr-${cleanEmail.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16)}`;
     const domain = cleanEmail.split('@')[1] || 'trce.io';
     const isApex = domain === 'apexindustrial.com' || cleanEmail.includes('dinesh');
     const orgName = isApex
@@ -60,18 +82,33 @@ export async function POST(request: Request) {
       console.warn('Tenant provisioning notice (proceeding):', provisionErr);
     }
 
-    return NextResponse.json({
+    const verifiedUser = {
+      id: verifiedUserId,
+      email: cleanEmail,
+      name: cleanEmail.split('@')[0] || 'Operator',
+      role: isApex ? 'Operations Director' : 'Plant Controller',
+      organization: orgName,
+    };
+
+    const response = NextResponse.json({
       success: true,
-      user: {
-        id: verifiedUserId,
-        email: cleanEmail,
-        name: cleanEmail.split('@')[0] || 'Operator',
-        role: isApex ? 'Operations Director' : 'Plant Controller',
-        organization: orgName,
-      },
+      user: verifiedUser,
     });
+
+    // Clear the challenge cookie once consumed
+    response.cookies.delete('trce_otp_challenge');
+
+    // Set permanent session cookies
+    response.cookies.set('trce_auth_user_v1', encodeURIComponent(JSON.stringify(verifiedUser)), {
+      path: '/',
+      maxAge: 604800,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+    });
+
+    return response;
   } catch (error: any) {
-    console.error('Unexpected error in /api/auth/verify-otp:', error);
+    console.error('Fatal verify-otp error:', error);
     return NextResponse.json(
       { error: error?.message || 'Unexpected server error during OTP verification.' },
       { status: 500 }
