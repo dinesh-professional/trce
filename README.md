@@ -2,6 +2,9 @@
 
 > Untangling the Industrial Supply Chain.
 
+**Live Production App**: [https://trce-six.vercel.app](https://trce-six.vercel.app)  
+**Source Code**: [https://github.com/dinesh-professional/trce](https://github.com/dinesh-professional/trce)
+
 Operational intelligence for modern industrial teams. Trce unites machine telemetry, distributed inventory, and supplier catalog feeds into a single operational workspace to detect equipment anomalies, trace spare resources, and execute automated inter-facility transfers.
 
 ---
