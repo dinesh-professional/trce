@@ -99,13 +99,9 @@ export default function LoginPage() {
       const result = await sendOtp(email.trim());
       if (result.success) {
         setOtpStage('verify');
-        setInfoMessage(
-          result.demoCode
-            ? `Security OTP dispatched! (Demo Passcode: ${result.demoCode})`
-            : `A 6-digit verification code has been dispatched to ${email.trim()}.`
-        );
+        setInfoMessage(`Security OTP dispatched via SMTP! A 6-digit verification code has been sent to ${email.trim()}.`);
       } else {
-        setErrors({ general: result.error || 'Failed to dispatch OTP. Please try password sign-in.' });
+        setErrors({ general: result.error || 'SMTP dispatch failed. Please verify your email or SMTP configuration.' });
       }
     } catch {
       setErrors({ general: 'Failed to send OTP.' });

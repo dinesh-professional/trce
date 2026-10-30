@@ -162,13 +162,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim().toLowerCase() }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        return { success: false, error: data.error || 'Failed to send OTP' };
+        return { success: false, error: data.error || 'Failed to dispatch OTP over SMTP.' };
       }
-      return { success: true, demoCode: data.demoCode };
+      return { success: true };
     } catch (err: any) {
-      return { success: true, demoCode: '123456' };
+      return { success: false, error: err?.message || 'Network communication error sending OTP.' };
     }
   };
 

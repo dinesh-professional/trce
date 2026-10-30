@@ -4,54 +4,60 @@ import { matchOrProvisionTenant } from '@/lib/supabase/tenant-provisioner';
 
 export async function POST(request: Request) {
   try {
-    const { email, token } = await request.json();
+    const body = await request.json().catch(() => ({}));
+    const { email, token } = body;
 
     if (!email || !token) {
       return NextResponse.json(
-        { error: 'Email and OTP token are required.' },
+        { error: 'Both email and 6-digit OTP code are required.' },
         { status: 400 }
       );
     }
 
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanToken = token.trim();
+    const cleanEmail = String(email).trim().toLowerCase();
+    const cleanToken = String(token).trim();
+
+    if (!/^\d{6}$/.test(cleanToken)) {
+      return NextResponse.json(
+        { error: 'OTP must be a valid 6-digit numerical code.' },
+        { status: 400 }
+      );
+    }
+
     const supabase = await createClient();
 
-    let verifiedUserId: string | null = null;
-
-    // 1. Verify with Supabase Auth OTP engine
+    // 1. Verify token with Supabase Auth GoTrue engine
     const { data, error } = await supabase.auth.verifyOtp({
       email: cleanEmail,
       token: cleanToken,
       type: 'email',
     });
 
-    if (!error && data.user) {
-      verifiedUserId = data.user.id;
-    } else if (cleanToken === '123456' || cleanToken === '000000') {
-      // Demo fallback bypass for hackathon testing
-      verifiedUserId = `usr-${Date.now()}`;
-    } else {
+    if (error || !data.user) {
+      console.warn('Supabase verifyOtp failed:', error?.message);
       return NextResponse.json(
         { error: error?.message || 'Invalid or expired 6-digit OTP code.' },
         { status: 401 }
       );
     }
 
+    const verifiedUserId = data.user.id;
+
     // 2. Provision or match corporate tenant
-    const domain = cleanEmail.split('@')[1];
+    const domain = cleanEmail.split('@')[1] || 'trce.io';
     const isApex = domain === 'apexindustrial.com' || cleanEmail.includes('dinesh');
     const orgName = isApex
       ? 'Apex Industrial Systems'
       : `${domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1)} Industrial Systems`;
 
-    // Ensure user record exists
-    if (verifiedUserId) {
+    try {
       await matchOrProvisionTenant(
         verifiedUserId,
         cleanEmail,
         cleanEmail.split('@')[0]
       );
+    } catch (provisionErr) {
+      console.warn('Tenant provisioning notice (proceeding):', provisionErr);
     }
 
     return NextResponse.json({
@@ -65,8 +71,9 @@ export async function POST(request: Request) {
       },
     });
   } catch (error: any) {
+    console.error('Unexpected error in /api/auth/verify-otp:', error);
     return NextResponse.json(
-      { error: error?.message || 'Unexpected OTP verification error.' },
+      { error: error?.message || 'Unexpected server error during OTP verification.' },
       { status: 500 }
     );
   }
