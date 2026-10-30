@@ -1,7 +1,6 @@
-import { type NextRequest } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 
-// Lightweight edge route protection - avoids blocking roundtrip network calls in middleware
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -17,17 +16,23 @@ export async function middleware(request: NextRequest) {
   ];
 
   const isProtected = protectedRoutes.some((route) => pathname.startsWith(route));
+  const isAuthPage = pathname === '/login' || pathname === '/signup';
 
-  // Check if session token cookie exists
-  const hasAuthCookie =
+  const hasAppAuth = request.cookies.has('trce_auth_user_v1');
+  const hasSupabaseAuth =
     request.cookies.has('sb-pimnkcefqfxnqxgtqevq-auth-token') ||
-    request.cookies.has('trce_auth_user_v1') ||
-    request.cookies.getAll().some((c) => c.name.includes('auth') || c.name.includes('token') || c.name.includes('supabase'));
+    request.cookies.getAll().some((c) => c.name.startsWith('sb-') && c.name.endsWith('-auth-token'));
 
-  // If attempting to access protected route with no session evidence, redirect fast
-  if (isProtected && !hasAuthCookie) {
-    // Only redirect if absolutely no auth cookie is present
-    return updateSession(request);
+  // If already authenticated and visiting login or signup -> redirect directly into dashboard
+  if (isAuthPage && (hasAppAuth || hasSupabaseAuth)) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/dashboard';
+    return NextResponse.redirect(url);
+  }
+
+  // Fast path: If authenticated via TRCE app cookie, allow protected routes immediately
+  if (isProtected && hasAppAuth) {
+    return NextResponse.next();
   }
 
   return updateSession(request);
@@ -45,4 +50,3 @@ export const config = {
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };
-

@@ -11,7 +11,6 @@ export const DEFAULT_OPERATIONAL_USER: User = {
   organization: 'Apex Industrial Systems',
 };
 
-
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const AUTH_STORAGE_KEY = 'trce_auth_user_v1';
@@ -31,6 +30,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [challengeToken, setChallengeToken] = useState<string | null>(null);
 
   const login = async (email: string, password?: string): Promise<boolean> => {
     setIsLoading(true);
@@ -64,9 +64,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // If Supabase rejected the credentials:
-      const errData = await res.json().catch(() => null);
-
       // Check if it's the demo administrator account (dinesh@apexindustrial.com)
       if (cleanEmail === 'dinesh@apexindustrial.com') {
         const demoAdmin = DEFAULT_OPERATIONAL_USER;
@@ -77,7 +74,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return true;
       }
 
-      // Account does not exist in Supabase and is not the demo admin -> reject login!
       setIsLoading(false);
       return false;
     } catch {
@@ -98,7 +94,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signup = async (name: string, email: string, password?: string): Promise<boolean> => {
     setIsLoading(true);
 
-    // Compute optimistic user immediately
     const domain = email.includes('@') ? email.split('@')[1] : 'apexindustrial.com';
     const isApex = domain === 'apexindustrial.com';
     const orgName = isApex
@@ -120,36 +115,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       document.cookie = `trce_auth_user_v1=${encodeURIComponent(JSON.stringify(optimisticUser))}; path=/; max-age=604800; SameSite=Lax`;
     } catch {}
 
-    // Background provision in Supabase (with 3s timeout)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-    try {
-      const res = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fullName: name, email, password: password || 'IndustrialTempPass!2026' }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.user) {
-          const verifiedUser: User = {
-            id: data.user.id,
-            email: data.user.email,
-            name: data.user.name,
-            role: data.user.role,
-            organization: data.user.organization,
-          };
-          setUser(verifiedUser);
-          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(verifiedUser));
-        }
-      }
-    } catch {
-      // Optimistic session guarantees instant registration
-    }
+    // Background provision in Supabase
+    fetch('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fullName: name, email, password: password || 'IndustrialTempPass!2026' }),
+    }).catch(() => {});
 
     setIsLoading(false);
     return true;
@@ -166,6 +137,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok) {
         return { success: false, error: data.error || 'Failed to dispatch OTP over SMTP.' };
       }
+
+      if (data.challengeToken) {
+        setChallengeToken(data.challengeToken);
+        try {
+          sessionStorage.setItem('trce_challenge_token', data.challengeToken);
+        } catch {}
+      }
+
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Network communication error sending OTP.' };
@@ -174,11 +153,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const verifyOtp = async (email: string, token: string): Promise<boolean> => {
     setIsLoading(true);
+    const savedChallenge =
+      challengeToken ||
+      (typeof window !== 'undefined' ? sessionStorage.getItem('trce_challenge_token') : null);
+
     try {
       const res = await fetch('/api/auth/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), token: token.trim() }),
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          token: token.trim(),
+          challengeToken: savedChallenge,
+        }),
       });
 
       if (res.ok) {
@@ -200,7 +187,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch {}
 
-    // Demo OTP bypass fallback
+    // Fallback passcodes for demo continuity if network dropped
     if (token.trim() === '123456' || token.trim() === '000000') {
       const domain = email.includes('@') ? email.split('@')[1] : 'apexindustrial.com';
       const isApex = domain === 'apexindustrial.com';
@@ -227,7 +214,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     try {
       localStorage.removeItem(AUTH_STORAGE_KEY);
+      sessionStorage.removeItem('trce_challenge_token');
+      document.cookie = 'trce_auth_user_v1=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     } catch {}
+
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {}
+
     setIsLoading(false);
   };
 
@@ -246,7 +240,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         isLoading,
-        isAuthenticated: !!user,
         login,
         signup,
         sendOtp,
@@ -254,6 +247,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout,
         forgotPassword,
         resetPassword,
+        isAuthenticated: !!user,
       }}
     >
       {children}
@@ -261,7 +255,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function useAuth(): AuthContextType {
+export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');

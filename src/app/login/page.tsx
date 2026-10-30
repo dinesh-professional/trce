@@ -75,7 +75,7 @@ export default function LoginPage() {
     try {
       const success = await login(email.trim(), password);
       if (success) {
-        router.push('/dashboard');
+        window.location.href = '/dashboard';
       } else {
         setErrors({ general: 'Invalid email or password.' });
         setIsSubmitting(false);
@@ -124,7 +124,7 @@ export default function LoginPage() {
     try {
       const success = await verifyOtp(email.trim(), otpToken.trim());
       if (success) {
-        router.push('/dashboard');
+        window.location.href = '/dashboard';
       } else {
         setErrors({ general: 'Invalid or expired OTP code.' });
         setIsSubmitting(false);

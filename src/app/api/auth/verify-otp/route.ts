@@ -7,7 +7,7 @@ import { matchOrProvisionTenant } from '@/lib/supabase/tenant-provisioner';
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const { email, token } = body;
+    const { email, token, challengeToken: bodyChallengeToken } = body;
 
     if (!email || !token) {
       return NextResponse.json(
@@ -26,9 +26,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // 1. Verify against cryptographic signed HMAC challenge
+    // 1. Check challenge token from either request body or HTTP-only cookie
     const cookieStore = await cookies();
-    const challengeCookie = cookieStore.get('trce_otp_challenge')?.value;
+    const challengeCookie = bodyChallengeToken || cookieStore.get('trce_otp_challenge')?.value;
 
     let isVerified = false;
     let verificationError = '';
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // 2. If not verified via challenge cookie, try Supabase GoTrue OTP as fallback
+    // 2. Fallback check: Supabase GoTrue OTP
     if (!isVerified) {
       try {
         const supabase = await createClient();
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Provision or match corporate tenant
+    // 3. Provision or match corporate tenant (non-blocking)
     const verifiedUserId = `usr-${cleanEmail.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16)}`;
     const domain = cleanEmail.split('@')[1] || 'trce.io';
     const isApex = domain === 'apexindustrial.com' || cleanEmail.includes('dinesh');
@@ -72,15 +72,12 @@ export async function POST(request: Request) {
       ? 'Apex Industrial Systems'
       : `${domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1)} Industrial Systems`;
 
-    try {
-      await matchOrProvisionTenant(
-        verifiedUserId,
-        cleanEmail,
-        cleanEmail.split('@')[0]
-      );
-    } catch (provisionErr) {
-      console.warn('Tenant provisioning notice (proceeding):', provisionErr);
-    }
+    // Run tenant provision in background so response returns in < 50ms
+    matchOrProvisionTenant(
+      verifiedUserId,
+      cleanEmail,
+      cleanEmail.split('@')[0]
+    ).catch((err) => console.warn('Background tenant provision note:', err));
 
     const verifiedUser = {
       id: verifiedUserId,
@@ -98,7 +95,7 @@ export async function POST(request: Request) {
     // Clear the challenge cookie once consumed
     response.cookies.delete('trce_otp_challenge');
 
-    // Set permanent session cookies
+    // Set permanent session cookies for both middleware and client
     response.cookies.set('trce_auth_user_v1', encodeURIComponent(JSON.stringify(verifiedUser)), {
       path: '/',
       maxAge: 604800,

@@ -108,3 +108,4 @@ if (process.argv[1]?.endsWith('send-direct-smtp.mjs')) {
     .then(() => console.log('Test completed successfully!'))
     .catch((err) => console.error('Test failed:', err));
 }
+

@@ -45,6 +45,7 @@ export async function POST(request: Request) {
     const response = NextResponse.json({
       success: true,
       message: `Security passcode dispatched to ${cleanEmail} via Gmail SMTP.`,
+      challengeToken,
     });
 
     // Store signed challenge in HTTP-only cookie (10 minute expiry)
