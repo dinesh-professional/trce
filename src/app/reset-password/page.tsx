@@ -91,10 +91,16 @@ export default function ResetPasswordPage() {
               />
             </Link>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-white">
+              <h1
+                style={{ color: '#FFFFFF' }}
+                className="text-3xl font-black tracking-tight text-white !text-[#FFFFFF] drop-shadow-[0_2px_12px_rgba(0,0,0,0.9)]"
+              >
                 Set new password
               </h1>
-              <p className="text-xs sm:text-sm text-[#CBD5E1] mt-1 font-normal">
+              <p
+                style={{ color: '#E2E8F0' }}
+                className="text-sm text-slate-200 !text-[#E2E8F0] mt-2 font-medium"
+              >
                 Choose a new secure password for your account.
               </p>
             </div>

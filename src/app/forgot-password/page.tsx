@@ -78,10 +78,16 @@ export default function ForgotPasswordPage() {
               />
             </Link>
             <div>
-              <h1 className="text-3xl font-black tracking-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+              <h1
+                style={{ color: '#FFFFFF' }}
+                className="text-3xl font-black tracking-tight text-white !text-[#FFFFFF] drop-shadow-[0_2px_12px_rgba(0,0,0,0.9)]"
+              >
                 Reset password
               </h1>
-              <p className="text-sm text-slate-300 mt-2 font-medium">
+              <p
+                style={{ color: '#E2E8F0' }}
+                className="text-sm text-slate-200 !text-[#E2E8F0] mt-2 font-medium"
+              >
                 Enter your email address to receive reset instructions.
               </p>
             </div>
