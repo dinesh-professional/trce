@@ -15,13 +15,38 @@ export async function POST(request: Request) {
     }
 
     const cleanEmail = email.trim().toLowerCase();
+    const supabase = await createClient();
 
-    // 1. Generate 6-digit cryptographically secure OTP code
+    // 1. STRICT ACCOUNT VERIFICATION: Check if user account was created in Sign Up
+    const { error: existenceCheckError } = await supabase.auth.signInWithOtp({
+      email: cleanEmail,
+      options: {
+        shouldCreateUser: false, // Rejects any email that does not have an account!
+      },
+    });
+
+    if (
+      existenceCheckError &&
+      ((existenceCheckError as any).code === 'otp_disabled' ||
+        existenceCheckError.message.toLowerCase().includes('signups not allowed') ||
+        existenceCheckError.message.toLowerCase().includes('user not found'))
+    ) {
+      console.warn(`[OTP Rejected] Unregistered email attempted login: ${cleanEmail}`);
+      return NextResponse.json(
+        {
+          error:
+            'No account found with this email. Only registered accounts can log in. Please sign up first to create your account.',
+        },
+        { status: 403 }
+      );
+    }
+
+    // 2. Generate 6-digit cryptographically secure OTP code
     const crypto = await import('crypto');
     const otpCode = crypto.randomInt(100000, 999999).toString();
 
-    // 2. Dispatch real email via Gmail SMTP Protocol
-    console.log(`[SMTP] Dispatching security passcode to: ${cleanEmail}`);
+    // 3. Dispatch real email via Gmail SMTP Protocol to verified registered account
+    console.log(`[SMTP] Dispatching security passcode to registered account: ${cleanEmail}`);
     try {
       await sendSmtpEmail(cleanEmail, otpCode);
       console.log(`[SMTP] Successfully delivered to ${cleanEmail}`);
@@ -33,14 +58,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Create signed HMAC challenge token
+    // 4. Create signed HMAC challenge token
     const challengeToken = createOtpChallenge(cleanEmail, otpCode);
-
-    // 4. Also register user in Supabase in background (best-effort)
-    try {
-      const supabase = await createClient();
-      supabase.auth.signInWithOtp({ email: cleanEmail, options: { shouldCreateUser: true } }).catch(() => {});
-    } catch {}
 
     const response = NextResponse.json({
       success: true,

@@ -82,15 +82,22 @@ export default function SignupPage() {
     setErrors({});
 
     try {
-      const success = await signup(fullName.trim(), email.trim(), password);
-      if (success) {
-        router.push('/dashboard');
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullName: fullName.trim(), email: email.trim(), password }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.user) {
+        window.location.href = '/dashboard';
       } else {
-        setErrors({ general: 'Failed to create account. Please check your details.' });
+        setErrors({ general: data.error || 'Failed to create account. Please check your details.' });
         setIsSubmitting(false);
       }
     } catch {
-      setErrors({ general: 'Failed to create account. Please try again.' });
+      setErrors({ general: 'Network error creating account. Please try again.' });
       setIsSubmitting(false);
     }
   };

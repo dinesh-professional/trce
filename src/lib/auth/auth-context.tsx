@@ -3,35 +3,29 @@
 import React, { createContext, useContext, useState } from 'react';
 import { User, AuthContextType } from './types';
 
-export const DEFAULT_OPERATIONAL_USER: User = {
-  id: 'usr-01',
-  email: 'dinesh@apexindustrial.com',
-  name: 'Dinesh',
-  role: 'Operations Director',
-  organization: 'Apex Industrial Systems',
-};
-
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const AUTH_STORAGE_KEY = 'trce_auth_user_v1';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  // STRICT: User is null by default until genuinely logged in or signed up
   const [user, setUser] = useState<User | null>(() => {
-    if (typeof window === 'undefined') return DEFAULT_OPERATIONAL_USER;
+    if (typeof window === 'undefined') return null;
     try {
       const stored = localStorage.getItem(AUTH_STORAGE_KEY);
       if (stored) {
         return JSON.parse(stored);
       }
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(DEFAULT_OPERATIONAL_USER));
-      return DEFAULT_OPERATIONAL_USER;
+      return null;
     } catch {
-      return DEFAULT_OPERATIONAL_USER;
+      return null;
     }
   });
+
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
 
+  // 1. Password Login: Strictly authenticates against registered credentials
   const login = async (email: string, password?: string): Promise<boolean> => {
     setIsLoading(true);
 
@@ -39,37 +33,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const cleanPass = password || '';
 
     try {
-      // 1. Authenticate with Supabase Database
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: cleanEmail, password: cleanPass }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.user) {
-          const verifiedUser: User = {
-            id: data.user.id,
-            email: data.user.email,
-            name: data.user.name,
-            role: data.user.role,
-            organization: data.user.organization,
-          };
-          setUser(verifiedUser);
-          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(verifiedUser));
-          document.cookie = `trce_auth_user_v1=${encodeURIComponent(JSON.stringify(verifiedUser))}; path=/; max-age=604800; SameSite=Lax`;
-          setIsLoading(false);
-          return true;
-        }
-      }
+      const data = await res.json().catch(() => ({}));
 
-      // Check if it's the demo administrator account (dinesh@apexindustrial.com)
-      if (cleanEmail === 'dinesh@apexindustrial.com') {
-        const demoAdmin = DEFAULT_OPERATIONAL_USER;
-        setUser(demoAdmin);
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(demoAdmin));
-        document.cookie = `trce_auth_user_v1=${encodeURIComponent(JSON.stringify(demoAdmin))}; path=/; max-age=604800; SameSite=Lax`;
+      if (res.ok && data.user) {
+        const verifiedUser: User = {
+          id: data.user.id,
+          email: data.user.email,
+          name: data.user.name,
+          role: data.user.role,
+          organization: data.user.organization,
+        };
+        setUser(verifiedUser);
+        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(verifiedUser));
+        document.cookie = `trce_auth_user_v1=${encodeURIComponent(JSON.stringify(verifiedUser))}; path=/; max-age=604800; SameSite=Lax`;
         setIsLoading(false);
         return true;
       }
@@ -77,55 +59,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
       return false;
     } catch {
-      // Offline fallback: only allow demo admin
-      if (cleanEmail === 'dinesh@apexindustrial.com') {
-        const demoAdmin = DEFAULT_OPERATIONAL_USER;
-        setUser(demoAdmin);
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(demoAdmin));
-        document.cookie = `trce_auth_user_v1=${encodeURIComponent(JSON.stringify(demoAdmin))}; path=/; max-age=604800; SameSite=Lax`;
-        setIsLoading(false);
-        return true;
-      }
       setIsLoading(false);
       return false;
     }
   };
 
+  // 2. Sign Up: Genuinely creates an account in Supabase database
   const signup = async (name: string, email: string, password?: string): Promise<boolean> => {
     setIsLoading(true);
 
-    const domain = email.includes('@') ? email.split('@')[1] : 'apexindustrial.com';
-    const isApex = domain === 'apexindustrial.com';
-    const orgName = isApex
-      ? 'Apex Industrial Systems'
-      : `${domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1)} Industrial Systems`;
-
-    const optimisticUser: User = {
-      id: `usr-${Date.now()}`,
-      name: name || 'Operator',
-      email: email || 'operator@trce.io',
-      role: isApex ? 'Plant Controller' : 'Operations Director',
-      organization: orgName,
-    };
-
-    // Fast-path: Set optimistic local session and cookie immediately
-    setUser(optimisticUser);
     try {
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(optimisticUser));
-      document.cookie = `trce_auth_user_v1=${encodeURIComponent(JSON.stringify(optimisticUser))}; path=/; max-age=604800; SameSite=Lax`;
-    } catch {}
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullName: name, email, password }),
+      });
 
-    // Background provision in Supabase
-    fetch('/api/auth/signup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fullName: name, email, password: password || 'IndustrialTempPass!2026' }),
-    }).catch(() => {});
+      const data = await res.json().catch(() => ({}));
 
-    setIsLoading(false);
-    return true;
+      if (res.ok && data.user) {
+        const registeredUser: User = {
+          id: data.user.id,
+          email: data.user.email,
+          name: data.user.name,
+          role: data.user.role,
+          organization: data.user.organization,
+        };
+        setUser(registeredUser);
+        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(registeredUser));
+        document.cookie = `trce_auth_user_v1=${encodeURIComponent(JSON.stringify(registeredUser))}; path=/; max-age=604800; SameSite=Lax`;
+        setIsLoading(false);
+        return true;
+      }
+
+      setIsLoading(false);
+      return false;
+    } catch {
+      setIsLoading(false);
+      return false;
+    }
   };
 
+  // 3. Email OTP Dispatch: Strictly requires an existing registered account
   const sendOtp = async (email: string): Promise<{ success: boolean; error?: string; demoCode?: string }> => {
     try {
       const res = await fetch('/api/auth/send-otp', {
@@ -133,9 +108,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim().toLowerCase() }),
       });
+
       const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        return { success: false, error: data.error || 'Failed to dispatch OTP over SMTP.' };
+        return {
+          success: false,
+          error: data.error || 'No registered account found with this email. Please sign up first.',
+        };
       }
 
       if (data.challengeToken) {
@@ -147,10 +127,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'Network communication error sending OTP.' };
+      return { success: false, error: err?.message || 'Network error requesting OTP.' };
     }
   };
 
+  // 4. Email OTP Verification: Verifies code for the registered account
   const verifyOtp = async (email: string, token: string): Promise<boolean> => {
     setIsLoading(true);
     const savedChallenge =
@@ -187,28 +168,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch {}
 
-    // Fallback passcodes for demo continuity if network dropped
-    if (token.trim() === '123456' || token.trim() === '000000') {
-      const domain = email.includes('@') ? email.split('@')[1] : 'apexindustrial.com';
-      const isApex = domain === 'apexindustrial.com';
-      const fallbackUser: User = {
-        id: `usr-${Date.now()}`,
-        name: email.split('@')[0] || 'Operator',
-        email: email.trim().toLowerCase(),
-        role: isApex ? 'Operations Director' : 'Plant Controller',
-        organization: isApex ? 'Apex Industrial Systems' : `${domain.split('.')[0]} Industrial Systems`,
-      };
-      setUser(fallbackUser);
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(fallbackUser));
-      document.cookie = `trce_auth_user_v1=${encodeURIComponent(JSON.stringify(fallbackUser))}; path=/; max-age=604800; SameSite=Lax`;
-      setIsLoading(false);
-      return true;
-    }
-
     setIsLoading(false);
     return false;
   };
 
+  // 5. Logout: Clears all authentication state and cookies
   const logout = async (): Promise<void> => {
     setIsLoading(true);
     setUser(null);
@@ -244,6 +208,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         isLoading,
+        isAuthenticated: !!user,
         login,
         signup,
         sendOtp,
@@ -251,7 +216,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout,
         forgotPassword,
         resetPassword,
-        isAuthenticated: !!user,
       }}
     >
       {children}
@@ -259,7 +223,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function useAuth() {
+export function useAuth(): AuthContextType {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');

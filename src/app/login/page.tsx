@@ -73,15 +73,26 @@ export default function LoginPage() {
     setInfoMessage(null);
 
     try {
-      const success = await login(email.trim(), password);
-      if (success) {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.user) {
         window.location.href = '/dashboard';
       } else {
-        setErrors({ general: 'Invalid email or password.' });
+        setErrors({
+          general:
+            data.error ||
+            'Invalid credentials. Only registered accounts can log in. Please sign up first.',
+        });
         setIsSubmitting(false);
       }
     } catch {
-      setErrors({ general: 'Invalid email or password.' });
+      setErrors({ general: 'Network error connecting to login service. Please try again.' });
       setIsSubmitting(false);
     }
   };

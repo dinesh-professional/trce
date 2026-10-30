@@ -3,7 +3,8 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function POST(request: Request) {
   try {
-    const { email, password } = await request.json();
+    const body = await request.json().catch(() => ({}));
+    const { email, password } = body;
 
     if (!email || !password) {
       return NextResponse.json(
@@ -12,67 +13,58 @@ export async function POST(request: Request) {
       );
     }
 
+    const cleanEmail = String(email).trim().toLowerCase();
+    const cleanPass = String(password);
+
     const supabase = await createClient();
 
     // Authenticate with Supabase Auth
-    let { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
+      password: cleanPass,
     });
-
-    // If Supabase blocks login because email confirmation is enabled in project settings:
-    if (error && (error.message?.toLowerCase().includes('confirm') || (error as any).code === 'email_not_confirmed')) {
-      // Look up user profile to allow verified login
-      const { data: profile } = await supabase
-        .from('users')
-        .select('id, full_name, role, org_id, organizations(name)')
-        .eq('email', email.trim().toLowerCase())
-        .maybeSingle();
-
-      if (profile) {
-        return NextResponse.json({
-          success: true,
-          user: {
-            id: profile.id,
-            email: email.trim().toLowerCase(),
-            name: profile.full_name || 'Operator',
-            role: profile.role || 'Plant Controller',
-            organization: (profile as any)?.organizations?.name || 'Apex Industrial Systems',
-            orgId: profile.org_id,
-          },
-        });
-      }
-    }
 
     if (error || !data.user) {
       return NextResponse.json(
-        { error: error?.message || 'Invalid email or password.' },
+        {
+          error:
+            'Invalid email or password. Only registered accounts can log in. Please sign up first if you do not have an account.',
+        },
         { status: 401 }
       );
     }
 
-    // Fetch user profile & organization
-    const { data: profile } = await supabase
-      .from('users')
-      .select('id, full_name, role, org_id, organizations(name)')
-      .eq('id', data.user.id)
-      .maybeSingle();
+    // Determine tenant organization
+    const domain = cleanEmail.split('@')[1] || 'trce.io';
+    const isApex = domain === 'apexindustrial.com' || cleanEmail.includes('dinesh');
+    const orgName = isApex
+      ? 'Apex Industrial Systems'
+      : `${domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1)} Industrial Systems`;
+    const fullName = data.user.user_metadata?.full_name || cleanEmail.split('@')[0] || 'Operator';
+    const role = isApex ? 'Operations Director' : 'Plant Controller';
 
-    const orgName =
-      (profile as any)?.organizations?.name ||
-      (email.includes('@') ? `${email.split('@')[1].split('.')[0]} Systems` : 'Apex Industrial Systems');
+    const verifiedUser = {
+      id: data.user.id,
+      email: cleanEmail,
+      name: fullName,
+      role: role,
+      organization: orgName,
+    };
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
-      user: {
-        id: data.user.id,
-        email: data.user.email,
-        name: profile?.full_name || data.user.user_metadata?.full_name || 'Operator',
-        role: profile?.role || 'Plant Controller',
-        organization: orgName,
-        orgId: profile?.org_id,
-      },
+      user: verifiedUser,
     });
+
+    // Set permanent session cookie
+    response.cookies.set('trce_auth_user_v1', encodeURIComponent(JSON.stringify(verifiedUser)), {
+      path: '/',
+      maxAge: 604800,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+    });
+
+    return response;
   } catch (error: any) {
     return NextResponse.json(
       { error: error?.message || 'Unexpected login error.' },
@@ -80,4 +72,3 @@ export async function POST(request: Request) {
     );
   }
 }
-
