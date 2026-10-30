@@ -35,40 +35,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password?: string): Promise<boolean> => {
     setIsLoading(true);
 
-    // Compute optimistic user immediately to avoid stalling the UI
-    const domain = email.includes('@') ? email.split('@')[1] : 'apexindustrial.com';
-    const isApex = domain === 'apexindustrial.com' || email.toLowerCase().includes('dinesh');
-    const orgName = isApex
-      ? 'Apex Industrial Systems'
-      : `${domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1)} Industrial Systems`;
-
-    const optimisticUser: User = {
-      id: isApex ? DEFAULT_OPERATIONAL_USER.id : `usr-${Date.now()}`,
-      name: isApex ? DEFAULT_OPERATIONAL_USER.name : (email.split('@')[0] || 'Operator'),
-      email: email || DEFAULT_OPERATIONAL_USER.email,
-      role: isApex ? 'Operations Director' : 'Plant Controller',
-      organization: orgName,
-    };
-
-    // Fast-path: Set optimistic local session and cookie immediately
-    setUser(optimisticUser);
-    try {
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(optimisticUser));
-      document.cookie = `trce_auth_user_v1=${encodeURIComponent(JSON.stringify(optimisticUser))}; path=/; max-age=604800; SameSite=Lax`;
-    } catch {}
-
-    // Background verify with Supabase (with 2.5s quick timeout)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPass = password || '';
 
     try {
+      // 1. Authenticate with Supabase Database
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password: password || 'ApexIndustrial2026!' }),
-        signal: controller.signal,
+        body: JSON.stringify({ email: cleanEmail, password: cleanPass }),
       });
-      clearTimeout(timeoutId);
 
       if (res.ok) {
         const data = await res.json();
@@ -82,14 +58,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           };
           setUser(verifiedUser);
           localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(verifiedUser));
+          document.cookie = `trce_auth_user_v1=${encodeURIComponent(JSON.stringify(verifiedUser))}; path=/; max-age=604800; SameSite=Lax`;
+          setIsLoading(false);
+          return true;
         }
       }
-    } catch {
-      // If network takes longer than 2.5s, optimistic session keeps login instantaneous!
-    }
 
-    setIsLoading(false);
-    return true;
+      // If Supabase rejected the credentials:
+      const errData = await res.json().catch(() => null);
+
+      // Check if it's the demo administrator account (dinesh@apexindustrial.com)
+      if (cleanEmail === 'dinesh@apexindustrial.com') {
+        const demoAdmin = DEFAULT_OPERATIONAL_USER;
+        setUser(demoAdmin);
+        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(demoAdmin));
+        document.cookie = `trce_auth_user_v1=${encodeURIComponent(JSON.stringify(demoAdmin))}; path=/; max-age=604800; SameSite=Lax`;
+        setIsLoading(false);
+        return true;
+      }
+
+      // Account does not exist in Supabase and is not the demo admin -> reject login!
+      setIsLoading(false);
+      return false;
+    } catch {
+      // Offline fallback: only allow demo admin
+      if (cleanEmail === 'dinesh@apexindustrial.com') {
+        const demoAdmin = DEFAULT_OPERATIONAL_USER;
+        setUser(demoAdmin);
+        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(demoAdmin));
+        document.cookie = `trce_auth_user_v1=${encodeURIComponent(JSON.stringify(demoAdmin))}; path=/; max-age=604800; SameSite=Lax`;
+        setIsLoading(false);
+        return true;
+      }
+      setIsLoading(false);
+      return false;
+    }
   };
 
   const signup = async (name: string, email: string, password?: string): Promise<boolean> => {
