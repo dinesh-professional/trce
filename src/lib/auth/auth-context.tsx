@@ -223,6 +223,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {}
 
     setIsLoading(false);
+
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
   };
 
   const forgotPassword = async (email: string): Promise<boolean> => {

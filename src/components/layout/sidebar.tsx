@@ -281,27 +281,32 @@ export function Sidebar({
         <div className="border-t border-slate-200 bg-slate-50/70 p-3 space-y-2">
           {/* Workspace Info */}
           {!isCollapsed ? (
-            <div className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 flex items-center justify-between text-xs shadow-2xs">
+            <Link
+              href="/settings"
+              title="Manage Workspace & Facility"
+              className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/50 flex items-center justify-between text-xs shadow-2xs transition-all group cursor-pointer block"
+            >
               <div className="flex items-center gap-2 min-w-0">
-                <Building2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <Building2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 group-hover:scale-105 transition-transform" />
                 <div className="truncate">
                   <div className="text-[10px] text-slate-400 uppercase leading-none font-medium">
                     Workspace
                   </div>
-                  <div className="font-semibold text-slate-800 truncate mt-0.5">
+                  <div className="font-semibold text-slate-800 truncate mt-0.5 group-hover:text-emerald-950">
                     {user?.organization ?? 'Apex Industrial Group'}
                   </div>
                 </div>
               </div>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-            </div>
+              <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all" />
+            </Link>
           ) : (
-            <div
+            <Link
+              href="/settings"
               title={user?.organization ?? 'Apex Industrial Group'}
-              className="flex justify-center p-2 rounded-lg bg-white border border-slate-200 shadow-2xs"
+              className="flex justify-center p-2 rounded-lg bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/50 shadow-2xs transition-all cursor-pointer"
             >
               <Building2 className="w-3.5 h-3.5 text-emerald-600" />
-            </div>
+            </Link>
           )}
 
           {/* User Account / Signout */}
@@ -325,16 +330,15 @@ export function Sidebar({
               )}
             </Link>
 
-            {!isCollapsed && (
-              <button
-                onClick={() => logout()}
-                title="Log out"
-                aria-label="Log out"
-                className="text-slate-400 hover:text-red-600 p-1 rounded-lg hover:bg-red-50 transition-colors"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
-            )}
+            <button
+              onClick={() => logout()}
+              type="button"
+              title="Log out of TRCE"
+              aria-label="Log out"
+              className="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </aside>
