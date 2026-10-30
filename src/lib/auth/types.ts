@@ -16,6 +16,8 @@ export interface AuthState {
 export interface AuthContextType extends AuthState {
   login: (email: string, password?: string) => Promise<boolean>;
   signup: (name: string, email: string, password?: string) => Promise<boolean>;
+  sendOtp: (email: string) => Promise<{ success: boolean; error?: string; demoCode?: string }>;
+  verifyOtp: (email: string, token: string) => Promise<boolean>;
   logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<boolean>;
   resetPassword: (password: string) => Promise<boolean>;
