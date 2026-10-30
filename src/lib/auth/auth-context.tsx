@@ -35,42 +35,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password?: string): Promise<boolean> => {
     setIsLoading(true);
 
-    try {
-      // 1. Try Supabase Auth API endpoint
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password: password || 'ApexIndustrial2026!' }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.user) {
-          const loggedInUser: User = {
-            id: data.user.id,
-            email: data.user.email,
-            name: data.user.name,
-            role: data.user.role,
-            organization: data.user.organization,
-          };
-          setUser(loggedInUser);
-          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(loggedInUser));
-          setIsLoading(false);
-          return true;
-        }
-      }
-    } catch {
-      // Graceful fallback to client session
-    }
-
-    // 2. Demo fallback (e.g. Dinesh or any corporate email)
+    // Compute optimistic user immediately to avoid stalling the UI
     const domain = email.includes('@') ? email.split('@')[1] : 'apexindustrial.com';
     const isApex = domain === 'apexindustrial.com' || email.toLowerCase().includes('dinesh');
     const orgName = isApex
       ? 'Apex Industrial Systems'
       : `${domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1)} Industrial Systems`;
 
-    const loggedInUser: User = {
+    const optimisticUser: User = {
       id: isApex ? DEFAULT_OPERATIONAL_USER.id : `usr-${Date.now()}`,
       name: isApex ? DEFAULT_OPERATIONAL_USER.name : (email.split('@')[0] || 'Operator'),
       email: email || DEFAULT_OPERATIONAL_USER.email,
@@ -78,61 +50,104 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       organization: orgName,
     };
 
-    setUser(loggedInUser);
+    // Fast-path: Set optimistic local session and cookie immediately
+    setUser(optimisticUser);
     try {
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(loggedInUser));
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(optimisticUser));
+      document.cookie = `trce_auth_user_v1=${encodeURIComponent(JSON.stringify(optimisticUser))}; path=/; max-age=604800; SameSite=Lax`;
     } catch {}
-    setIsLoading(false);
-    return true;
-  };
 
-  const signup = async (name: string, email: string, password?: string): Promise<boolean> => {
-    setIsLoading(true);
+    // Background verify with Supabase (with 2.5s quick timeout)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+
     try {
-      // 1. Try Supabase Auth API endpoint with domain tenant matching
-      const res = await fetch('/api/auth/signup', {
+      const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fullName: name, email, password: password || 'IndustrialTempPass!2026' }),
+        body: JSON.stringify({ email: email.trim(), password: password || 'ApexIndustrial2026!' }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       if (res.ok) {
         const data = await res.json();
         if (data.user) {
-          const loggedInUser: User = {
+          const verifiedUser: User = {
             id: data.user.id,
             email: data.user.email,
             name: data.user.name,
             role: data.user.role,
             organization: data.user.organization,
           };
-          setUser(loggedInUser);
-          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(loggedInUser));
-          setIsLoading(false);
-          return true;
+          setUser(verifiedUser);
+          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(verifiedUser));
         }
       }
     } catch {
-      // Fallback gracefully to offline client session
+      // If network takes longer than 2.5s, optimistic session keeps login instantaneous!
     }
 
-    // 2. Client fallback matching corporate domain
+    setIsLoading(false);
+    return true;
+  };
+
+  const signup = async (name: string, email: string, password?: string): Promise<boolean> => {
+    setIsLoading(true);
+
+    // Compute optimistic user immediately
     const domain = email.includes('@') ? email.split('@')[1] : 'apexindustrial.com';
-    const orgName = domain === 'apexindustrial.com' 
-      ? 'Apex Industrial Systems' 
+    const isApex = domain === 'apexindustrial.com';
+    const orgName = isApex
+      ? 'Apex Industrial Systems'
       : `${domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1)} Industrial Systems`;
 
-    const newUser: User = {
+    const optimisticUser: User = {
       id: `usr-${Date.now()}`,
       name: name || 'Operator',
       email: email || 'operator@trce.io',
-      role: 'Plant Controller',
+      role: isApex ? 'Plant Controller' : 'Operations Director',
       organization: orgName,
     };
-    setUser(newUser);
+
+    // Fast-path: Set optimistic local session and cookie immediately
+    setUser(optimisticUser);
     try {
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newUser));
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(optimisticUser));
+      document.cookie = `trce_auth_user_v1=${encodeURIComponent(JSON.stringify(optimisticUser))}; path=/; max-age=604800; SameSite=Lax`;
     } catch {}
+
+    // Background provision in Supabase (with 3s timeout)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+    try {
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullName: name, email, password: password || 'IndustrialTempPass!2026' }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user) {
+          const verifiedUser: User = {
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.name,
+            role: data.user.role,
+            organization: data.user.organization,
+          };
+          setUser(verifiedUser);
+          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(verifiedUser));
+        }
+      }
+    } catch {
+      // Optimistic session guarantees instant registration
+    }
+
     setIsLoading(false);
     return true;
   };
